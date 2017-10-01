@@ -1,3 +1,10 @@
+/**
+ * Author: Leonid Lezner
+ * License: MIT
+ * 
+ * Required libraries: Adafruit_BluefruitLE_nRF51, Button
+ */
+
 #include <Arduino.h>
 #include "Feather.h"
 #include <SPI.h>
