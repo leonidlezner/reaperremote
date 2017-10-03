@@ -7,6 +7,7 @@
 
 #include <Arduino.h>
 #include "Feather.h"
+#include "remote.h"
 #include <SPI.h>
 #include "Adafruit_BLE.h"
 #include "Adafruit_BluefruitLE_SPI.h"
@@ -15,13 +16,7 @@
 #include "Adafruit_BLEBattery.h"
 #include <Button.h>
 
-#define MINIMUM_FIRMWARE_VERSION    "0.6.6"
-#define MODE_LED_BEHAVIOUR          "MODE"
 
-const unsigned int batt_mv_curve[] = {4200, 4030, 3860, 3830, 3790, 3700, 3600};
-const unsigned char batt_charge_curve[] = {100, 76, 52, 42, 30, 11, 0};
-
-const int ledPin = LED_BUILTIN;
 
 bool isConnected = false;
 
@@ -38,19 +33,8 @@ Button button1(6);
 // Button 2 is chapter marker
 Button button2(5);
 
-#define CYCLE_TIME_BLE      200 /* ms */
-#define CYCLE_TIME_BATTERY  1000 /* ms */
-#define CYCLE_TIME          50
-
-void error(const __FlashStringHelper *err)
-{
-  Serial.println(err);
-
-  while (1)
-  {
-    // block execution here...
-  };
-}
+MIDIDATA button1_data;
+MIDIDATA button2_data;
 
 void connected(void)
 {
@@ -129,13 +113,27 @@ void setup()
   }
 }
 
+void sendMidiData(MIDIDATA *data) {
+    midi.send(data->bytes[0], data->bytes[1], data->bytes[2]);
+}
+
 void sendMuteCommand(bool mute) {
   // Send CC message on channel 0, controller 1
-  midi.send(0xB0, 1, mute ? 127 : 0);
+  // midi.send(, 1, mute ? 127 : 0);
+  
+  button1_data.bytes[0] = 0xB0;
+  button1_data.bytes[1] = 0x01;
+  button1_data.bytes[2] = mute ? 0x7F : 0;
+  sendMidiData(&button1_data);
 }
 
 void sendMidiNote(bool onState, unsigned char channel, unsigned char note, unsigned char velocity) {
-  midi.send((onState ? 0x90 : 0x80) | (channel & 0x0F), note, velocity);
+  //midi.send((onState ? 0x90 : 0x80) | (channel & 0x0F), note, velocity);
+
+  button1_data.bytes[0] = (onState ? 0x90 : 0x80) | (channel & 0x0F);
+  button1_data.bytes[1] = note;
+  button1_data.bytes[2] = velocity;
+  sendMidiData(&button1_data);
 }
 
 void loop() {
