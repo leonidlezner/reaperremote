@@ -1,9 +1,9 @@
 /**
- * Author: Leonid Lezner
- * License: MIT
- * 
- * Required libraries: Adafruit_BluefruitLE_nRF51, Button
- */
+   Author: Leonid Lezner
+   License: MIT
+
+   Required libraries: Adafruit_BluefruitLE_nRF51, Button
+*/
 
 #include <Arduino.h>
 #include "Feather.h"
@@ -15,8 +15,8 @@
 #include "Adafruit_BLEBattery.h"
 #include <Button.h>
 
-#define MINIMUM_FIRMWARE_VERSION "0.6.6"
-#define MODE_LED_BEHAVIOUR      "MODE"
+#define MINIMUM_FIRMWARE_VERSION    "0.6.6"
+#define MODE_LED_BEHAVIOUR          "MODE"
 
 const unsigned int batt_mv_curve[] = {4200, 4030, 3860, 3830, 3790, 3700, 3600};
 const unsigned char batt_charge_curve[] = {100, 76, 52, 42, 30, 11, 0};
@@ -32,14 +32,15 @@ Adafruit_BluefruitLE_SPI ble(BLUEFRUIT_SPI_CS, BLUEFRUIT_SPI_IRQ, BLUEFRUIT_SPI_
 Adafruit_BLEMIDI midi(ble);
 Adafruit_BLEBattery battery(ble);
 
-Button button1(5);
-Button button2(6);
+// Button 1 is mute
+Button button1(6);
 
-#define MIDI_COMMAND_ON     0x90
-#define MIDI_COMMAND_OFF    0x80
+// Button 2 is chapter marker
+Button button2(5);
 
-#define CYCLE_TIME          500 /* ms */
-#define CYCLE_TIME_BATTERY  1000
+#define CYCLE_TIME_BLE      200 /* ms */
+#define CYCLE_TIME_BATTERY  1000 /* ms */
+#define CYCLE_TIME          50
 
 void error(const __FlashStringHelper *err)
 {
@@ -63,7 +64,7 @@ void disconnected(void)
 
 void BleMidiRX(uint16_t timestamp, uint8_t status, uint8_t byte1, uint8_t byte2)
 {
-
+  /* no action, ignoring the incomming data */
 }
 
 void setup()
@@ -72,6 +73,9 @@ void setup()
 
   button1.begin();
   button2.begin();
+
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);
 
   Serial.println(F("Reaper Remote by Allesnetz.com"));
 
@@ -125,18 +129,21 @@ void setup()
   }
 }
 
-
-void sendCC(unsigned char mute) {
+void sendMuteCommand(bool mute) {
   // Send CC message on channel 0, controller 1
   midi.send(0xB0, 1, mute ? 127 : 0);
 }
 
+void sendMidiNote(bool onState, unsigned char channel, unsigned char note, unsigned char velocity) {
+  midi.send((onState ? 0x90 : 0x80) | (channel & 0x0F), note, velocity);
+}
+
 void loop() {
-  if (cycle_ble >= CYCLE_TIME) {
+  if (cycle_ble >= CYCLE_TIME_BLE) {
     cycle_ble = 0;
-    ble.update(CYCLE_TIME);
+    ble.update(CYCLE_TIME_BLE);
   } else {
-    cycle_ble += 100;
+    cycle_ble += CYCLE_TIME;
   }
 
   if (isConnected) {
@@ -146,11 +153,6 @@ void loop() {
       unsigned int voltage = getBatteryVoltage();
       unsigned char charge = chargeLookup(batt_mv_curve, batt_charge_curve, voltage);
 
-      Serial.print("VBat: ");
-      Serial.print(voltage);
-      Serial.print(" c: ");
-      Serial.println(charge);
-
       ble.print("VBat: ");
       ble.print(voltage);
       ble.print(" c: ");
@@ -158,7 +160,7 @@ void loop() {
 
       battery.update(charge);
     } else {
-      cycle_battery += 100;
+      cycle_battery += CYCLE_TIME;
     }
   }
 
@@ -166,13 +168,15 @@ void loop() {
   if (button1.toggled()) {
     if (button1.read() == Button::PRESSED) {
       Serial.println("Button 1 has been pressed");
+      digitalWrite(ledPin, HIGH);
       if (isConnected) {
-        sendCC(1);
+        sendMuteCommand(true);
       }
     } else {
       Serial.println("Button 1 has been released");
+      digitalWrite(ledPin, LOW);
       if (isConnected) {
-        sendCC(0);
+        sendMuteCommand(false);
       }
     }
   }
@@ -181,17 +185,19 @@ void loop() {
   if (button2.toggled()) {
     if (button2.read() == Button::PRESSED) {
       Serial.println("Button 2 has been pressed");
+      digitalWrite(ledPin, HIGH);
       if (isConnected) {
         // Send the note to reaper to set the marker
-        midi.send(MIDI_COMMAND_ON, 0, 64);
+        sendMidiNote(true, 0, 0, 64);
       }
     } else {
       Serial.println("Button 2 has been released");
+      digitalWrite(ledPin, LOW);
       if (isConnected) {
-        midi.send(MIDI_COMMAND_OFF, 0, 64);
+        sendMidiNote(false, 0, 0, 64);
       }
     }
   }
 
-  delay(100);
+  delay(CYCLE_TIME);
 }
