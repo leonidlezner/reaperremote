@@ -8,6 +8,7 @@
 #include <Arduino.h>
 #include "Feather.h"
 #include "remote.h"
+#include "at_parser.h"
 #include <SPI.h>
 #include "Adafruit_BLE.h"
 #include "Adafruit_BluefruitLE_SPI.h"
@@ -49,6 +50,30 @@ void disconnected(void)
 void BleMidiRX(uint16_t timestamp, uint8_t status, uint8_t byte1, uint8_t byte2)
 {
   /* no action, ignoring the incomming data */
+}
+
+char getButtonDown(char *value)
+{
+  Serial.println("getButtonDown");
+  return AT_OK;
+}
+
+char setButtonDown(char *value)
+{
+  Serial.println("setButtonDown");
+  return AT_OK;
+}
+
+char getButtonUp(char *value)
+{
+  Serial.println("getButtonUp");
+  return AT_OK;
+}
+
+char setButtonUp(char *value)
+{
+  Serial.println("setButtonUp");
+  return AT_OK;
 }
 
 void setup()
@@ -111,16 +136,19 @@ void setup()
   {
     error(F("Could not start advertising"));
   }
+
+  at_register_command((string_t)"BTND", (at_callback)getButtonDown, (at_callback)setButtonDown, 0, 0);
+  at_register_command((string_t)"BTNU", (at_callback)getButtonUp, (at_callback)setButtonUp, 0, 0);
 }
 
 void sendMidiData(MIDIDATA *data) {
-    midi.send(data->bytes[0], data->bytes[1], data->bytes[2]);
+  midi.send(data->bytes[0], data->bytes[1], data->bytes[2]);
 }
 
 void sendMuteCommand(bool mute) {
   // Send CC message on channel 0, controller 1
   // midi.send(, 1, mute ? 127 : 0);
-  
+
   button1_data.bytes[0] = 0xB0;
   button1_data.bytes[1] = 0x01;
   button1_data.bytes[2] = mute ? 0x7F : 0;
@@ -136,7 +164,70 @@ void sendMidiNote(bool onState, unsigned char channel, unsigned char note, unsig
   sendMidiData(&button1_data);
 }
 
+void process_at_commands()
+{
+  static String readString = "";
+  char ret[50];
+  char res;
+
+  while (Serial.available())
+  {
+    if (Serial.available() > 0)
+    {
+      // Get a byte from buffer
+      char c = Serial.read();
+
+      readString += c;
+
+      // Input is too long
+      if (readString.length() > AT_MAX_TEMP_STRING)
+      {
+        Serial.println(AT_ERROR_STRING);
+        readString = "";
+      }
+      else
+      {
+        if (c == '\r' || c == ';')
+        {
+          readString.trim();
+
+          // Simple echo
+          if (readString == "AT")
+          {
+            Serial.println(DEVICE_DESCRIPTION);
+            Serial.println(AT_OK_STRING);
+            readString = "";
+          }
+          else
+          {
+            // Parsing the command
+            res = at_parse_line((string_t)readString.c_str(), (unsigned char*)ret);
+
+            readString = "";
+
+            if (res == AT_OK)
+            {
+              if (ms_strlen((string_t)ret) > 0)
+              {
+                String s_ret(ret);
+                Serial.println(s_ret);
+              }
+              Serial.println(AT_OK_STRING);
+            }
+            else
+            {
+              Serial.println(AT_ERROR_STRING);
+            }
+          }
+        }
+      }
+    } // end serial available
+  } // end while
+}
+
 void loop() {
+  process_at_commands();
+
   if (cycle_ble >= CYCLE_TIME_BLE) {
     cycle_ble = 0;
     ble.update(CYCLE_TIME_BLE);

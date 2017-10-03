@@ -10,6 +10,8 @@ const unsigned char batt_charge_curve[] = {100, 76, 52, 42, 30, 11, 0};
 
 const int ledPin = LED_BUILTIN;
 
+#define DEVICE_DESCRIPTION "ReaperRemote v0.0.1"
+
 #define MINIMUM_FIRMWARE_VERSION    "0.6.6"
 #define MODE_LED_BEHAVIOUR          "MODE"
 
