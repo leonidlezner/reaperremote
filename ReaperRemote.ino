@@ -8,7 +8,6 @@
 #include <Arduino.h>
 #include "Feather.h"
 #include "remote.h"
-#include "at_parser.h"
 #include <SPI.h>
 #include "Adafruit_BLE.h"
 #include "Adafruit_BluefruitLE_SPI.h"
@@ -16,8 +15,13 @@
 #include "Adafruit_BLEMIDI.h"
 #include "Adafruit_BLEBattery.h"
 #include <Button.h>
+#include <FlashStorage.h>
 
+typedef struct deviceInfo {
+  char name[50];
+} DeviceInfo;
 
+FlashStorage(deviceInfoStorage, DeviceInfo);
 
 bool isConnected = false;
 
@@ -54,6 +58,8 @@ void BleMidiRX(uint16_t timestamp, uint8_t status, uint8_t byte1, uint8_t byte2)
 
 char getButtonDown(char *value)
 {
+  strcpy(value, "1234");
+
   Serial.println("getButtonDown");
   return AT_OK;
 }
@@ -74,6 +80,43 @@ char setButtonUp(char *value)
 {
   Serial.println("setButtonUp");
   return AT_OK;
+}
+
+char getDeviceName(char *value)
+{
+  DeviceInfo devInfo = deviceInfoStorage.read();  
+  strcpy(value, devInfo.name);
+  return AT_OK;
+}
+
+char setDeviceName(char *value)
+{
+  char temp[50];
+
+  DeviceInfo devInfo;
+  strcpy(devInfo.name, value);
+  deviceInfoStorage.write(devInfo);
+
+  sprintf(temp, "AT+GAPDEVNAME=%s", value);
+  
+  if (!ble.sendCommandCheckOK(temp))
+  {
+    return AT_ERROR;
+  }
+  
+  return AT_OK;
+}
+
+void loadConfiguration()
+{
+  DeviceInfo devInfo = deviceInfoStorage.read();
+
+  
+  
+  if (!ble.sendCommandCheckOK(F("AT+GAPDEVNAME=ReaperRemote")))
+  {
+    error(F("Could not set device name"));
+  }
 }
 
 void setup()
@@ -97,10 +140,7 @@ void setup()
 
   ble.echo(false);
 
-  if (!ble.sendCommandCheckOK(F("AT+GAPDEVNAME=ReaperRemote")))
-  {
-    error(F("Could not set device name"));
-  }
+  loadConfiguration();
 
   Serial.println("Requesting Bluefruit info:");
 
@@ -139,6 +179,7 @@ void setup()
 
   at_register_command((string_t)"BTND", (at_callback)getButtonDown, (at_callback)setButtonDown, 0, 0);
   at_register_command((string_t)"BTNU", (at_callback)getButtonUp, (at_callback)setButtonUp, 0, 0);
+  at_register_command((string_t)"NAME", (at_callback)getDeviceName, (at_callback)setDeviceName, 0, 0);
 }
 
 void sendMidiData(MIDIDATA *data) {
@@ -164,66 +205,7 @@ void sendMidiNote(bool onState, unsigned char channel, unsigned char note, unsig
   sendMidiData(&button1_data);
 }
 
-void process_at_commands()
-{
-  static String readString = "";
-  char ret[50];
-  char res;
 
-  while (Serial.available())
-  {
-    if (Serial.available() > 0)
-    {
-      // Get a byte from buffer
-      char c = Serial.read();
-
-      readString += c;
-
-      // Input is too long
-      if (readString.length() > AT_MAX_TEMP_STRING)
-      {
-        Serial.println(AT_ERROR_STRING);
-        readString = "";
-      }
-      else
-      {
-        if (c == '\r' || c == ';')
-        {
-          readString.trim();
-
-          // Simple echo
-          if (readString == "AT")
-          {
-            Serial.println(DEVICE_DESCRIPTION);
-            Serial.println(AT_OK_STRING);
-            readString = "";
-          }
-          else
-          {
-            // Parsing the command
-            res = at_parse_line((string_t)readString.c_str(), (unsigned char*)ret);
-
-            readString = "";
-
-            if (res == AT_OK)
-            {
-              if (ms_strlen((string_t)ret) > 0)
-              {
-                String s_ret(ret);
-                Serial.println(s_ret);
-              }
-              Serial.println(AT_OK_STRING);
-            }
-            else
-            {
-              Serial.println(AT_ERROR_STRING);
-            }
-          }
-        }
-      }
-    } // end serial available
-  } // end while
-}
 
 void loop() {
   process_at_commands();
@@ -271,8 +253,10 @@ void loop() {
   }
 
   // Button 2 sets the marker in Reaper
-  if (button2.toggled()) {
-    if (button2.read() == Button::PRESSED) {
+  if (button2.toggled())
+  {
+    if (button2.read() == Button::PRESSED)
+    {
       Serial.println("Button 2 has been pressed");
       digitalWrite(ledPin, HIGH);
       if (isConnected) {
