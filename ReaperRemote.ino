@@ -23,6 +23,13 @@ const unsigned char batt_charge_curve[] = {100, 76, 52, 42, 30, 11, 0};
 
 const int ledPin = LED_BUILTIN;
 
+const int ledRed = A3;
+const int ledYellow = A4;
+
+#define LED_RED     1
+#define LED_YELLOW  2  
+#define LED_OFF     0
+
 bool isConnected = false;
 
 unsigned int cycle_ble = 0;
@@ -67,6 +74,25 @@ void BleMidiRX(uint16_t timestamp, uint8_t status, uint8_t byte1, uint8_t byte2)
   /* no action, ignoring the incomming data */
 }
 
+void showLED(unsigned char state)
+{
+  switch(state)
+  {
+    case LED_YELLOW:
+      digitalWrite(ledYellow, HIGH);
+      digitalWrite(ledRed, LOW);
+      break;
+    case LED_RED:
+      digitalWrite(ledYellow, LOW);
+      digitalWrite(ledRed, HIGH);
+      break;      
+    case LED_OFF:
+    default:
+      digitalWrite(ledYellow, LOW);
+      digitalWrite(ledRed, LOW);
+  }
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -76,6 +102,9 @@ void setup()
 
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, LOW);
+
+  pinMode(A3, OUTPUT);
+  pinMode(A4, OUTPUT);
 
   Serial.println(F("Reaper Remote by Allesnetz.com"));
 
@@ -168,13 +197,13 @@ void loop() {
   if (button1.toggled()) {
     if (button1.read() == Button::PRESSED) {
       Serial.println("Button 1 has been pressed");
-      digitalWrite(ledPin, HIGH);
+      showLED(LED_RED);
       if (isConnected) {
         sendMuteCommand(true);
       }
     } else {
       Serial.println("Button 1 has been released");
-      digitalWrite(ledPin, LOW);
+      showLED(LED_OFF);
       if (isConnected) {
         sendMuteCommand(false);
       }
@@ -185,14 +214,14 @@ void loop() {
   if (button2.toggled()) {
     if (button2.read() == Button::PRESSED) {
       Serial.println("Button 2 has been pressed");
-      digitalWrite(ledPin, HIGH);
+      showLED(LED_YELLOW);
       if (isConnected) {
         // Send the note to reaper to set the marker
         sendMidiNote(true, 0, 0, 64);
       }
     } else {
       Serial.println("Button 2 has been released");
-      digitalWrite(ledPin, LOW);
+      showLED(LED_OFF);
       if (isConnected) {
         sendMidiNote(false, 0, 0, 64);
       }
